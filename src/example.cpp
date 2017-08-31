@@ -106,11 +106,6 @@ void ExampleClass::operations()
 
   while (true)
   {
-    // plot the results of the last iteration and wait for keypress
-    auto key = cv::waitKey();
-    if ((int)key==27)
-      return;
-
     // get the next frame
     source_ >> frame_;
     if (frame_.empty())
@@ -125,13 +120,26 @@ void ExampleClass::operations()
     std::vector<cv::KeyPoint> keypoints_new;
     orb_detector_->detect(search_window, keypoints_new);
 
+    // for (uint32_t i=0; i<keypoints_new.size(); i++)
+    // {
+    //   std::cout << "---" << std::endl;
+    //   std::cout << i << std::endl;
+    //   std::cout << keypoints_new[i].class_id << std::endl;
+    //   std::cout << keypoints_new[i].angle << std::endl;
+    //   std::cout << keypoints_new[i].octave << std::endl;
+    //   std::cout << keypoints_new[i].pt << std::endl;
+    //   std::cout << keypoints_new[i].response << std::endl;
+    //   std::cout << keypoints_new[i].size << std::endl;
+    // }
+
     // generate descriptors
     cv::Mat descriptors_new;
     orb_extractor_->compute(search_window, keypoints_new, descriptors_new);
 
     // show the orb features in the search window
-    cv::drawKeypoints(search_window, keypoints_new, search_window);
-    cv::imshow("search window", search_window);
+    cv::Mat temp_draw = search_window.clone();
+    cv::drawKeypoints(search_window, keypoints_new, temp_draw);
+    cv::imshow("search window", temp_draw);
 
     // match the features
     cv::BFMatcher matcher = cv::BFMatcher(cv::NORM_HAMMING, true); // cv::NORM_HAMMING2 for when WTA_K==3 or 4
@@ -145,13 +153,76 @@ void ExampleClass::operations()
     cv::drawMatches(roi_, keypoints_, search_window, keypoints_new, matches, out);
     cv::imshow("pairs", out);
 
+    // std::cout << "------------" << std::endl;
+    float size = matches.size();
+    float percent = 0.20; // keep top 20% of best matches
+    float des_length = size*percent;
+
+    // sort the matches by distance
+    std::sort(matches.begin(), matches.end());
+
+    std::vector<cv::DMatch> matches2;
+
+    // keep top %
+    for (uint32_t i=0; i<des_length; i++)
+      matches2.push_back(matches[i]);
+
+
+    std::vector<cv::KeyPoint> keypoints_keep;
+    for (uint32_t i=0; i<matches2.size(); i++)
+    {
+      // std::cout << "---" << std::endl;
+      // std::cout << matches2[i].distance << std::endl;
+      // std::cout << matches2[i].imgIdx << std::endl; // always zero
+      // std::cout << matches2[i].queryIdx << std::endl;
+      // std::cout << matches2[i].trainIdx << std::endl;
+
+      // queryIdx is the id of the new keypoint
+      // trainIdx is the id of the old keypoint
+      keypoints_keep.push_back(keypoints_new[matches2[i].queryIdx]);
+    }
+
+    // show the kept orb features in the search window
+    cv::Mat temp_draw2 = search_window.clone();
+    cv::drawKeypoints(search_window, keypoints_keep, temp_draw2);
+    cv::imshow("kept", temp_draw2);
+
+    double x = 0;
+    double y = 0;
+    for (uint32_t i=0; i<keypoints_keep.size(); i++)
+    {
+      x += keypoints_keep[i].pt.x;
+      y += keypoints_keep[i].pt.y;
+    }
+
+    // centroid of the points
+    x = x/((double)keypoints_keep.size());// + col-expand;
+    y = y/((double)keypoints_keep.size());// + row-expand;
+
+    // find top-left corner of this position, given h, w
+    x = x - (double)w/2;
+    y = y - (double)h/2;
+
+    // find global position
+    x = x + col - expand;
+    y = y + row - expand;
+
+
+    // refresh descriptors of the matched ones
+
+    // "converge" on the set of descriptors based on movement
+    // use the fact that there is movement to come up with the
+    // set of keypoints that are consistently on the target, but regenerate
+    // the descriptors for them when necessary. artifact tracks won't have
+    // time to converge - hopefully
+
 
 
 
 
     // update window_ based on matched feature results
-    col = 165;
-    row = 165;
+    col = x;
+    row = y;
     window_ = cv::Rect(col, row, w, h);
 
     // update roi display
@@ -164,5 +235,10 @@ void ExampleClass::operations()
 
     // NOTE: this operates on the entire window, use the current estimate
     // to select a subwindow, decreasing the amount of backprop required?
+
+    // plot the results of this iteration and wait for keypress
+    auto key = cv::waitKey();
+    if ((int)key==27)
+      return;
   }
 }
