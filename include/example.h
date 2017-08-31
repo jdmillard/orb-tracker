@@ -24,5 +24,12 @@ private:
 
   cv::TermCriteria criteria_;
   uint32_t col, row, w, h;
+  int sss_;
+
+  cv::Ptr<cv::FeatureDetector> orb_detector_;
+  cv::Ptr<cv::DescriptorExtractor> orb_extractor_;
+
+  std::vector<cv::KeyPoint> keypoints_;
+  cv::Mat descriptors_;
 
 };
