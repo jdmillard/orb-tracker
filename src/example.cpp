@@ -31,14 +31,60 @@ ExampleClass::ExampleClass()
   roi_ = frame_(window_).clone();
   cv::imshow("roi", roi_);
 
+  int sss = 31; // <<<<<<<<<<<<<<<<<<<<<<<< PATCH SIZE <<<<<<<<<<<<<<<<<<<<<<<<
+  cv::Rect window_aug = cv::Rect(col-sss, row-sss, w+(2*sss), h+(2*sss));
+  cv::Mat roi2 = frame_(window_aug).clone();
+  cv::imshow("augmented", roi2);
+
   // draw rectangle
   cv::rectangle(frame_, cv::Point(col,row), cv::Point(col+w, row+h), cv::Scalar(255, 0, 0), 2);
   cv::imshow("frame", frame_);
 
   // use roi_ to extract ORB features
+  std::vector<cv::KeyPoint> keypoints;
+  int nfeatures     = 500;                    // max number of features (500)
+  float scaleFactor = 1.2;                    // pyramid scaling: 2 is poorer matching, 1 is more computation
+  int nlevels       = 8;                      // number of pyramid levels
+  int edgeThreshold = sss;                    // size of border where features are not detected
+  int firstLevel    = 0;                      //
+  int WTA_K         = 2;                      // points used in each element of descriptor
+  int scoreType     = cv::ORB::HARRIS_SCORE;  // used to rank cv::ORB::FAST_SCORE is less stable, but faster
+  int patchSize     = sss;                    // size of descriptor patch
+  int fastThreshold = 20;                     //
 
-  // termination criteria for the orb-tracker operation
-  // criteria_ = cv::TermCriteria(cv::TermCriteria::COUNT | cv::TermCriteria::EPS, 10, 1);
+  cv::Ptr<cv::FeatureDetector> orb_detector = cv::ORB::create(
+    nfeatures,
+    scaleFactor,
+    nlevels,
+    edgeThreshold,
+    firstLevel,
+    WTA_K,
+    scoreType,
+    patchSize,
+    fastThreshold);
+  orb_detector->detect(roi2, keypoints);
+
+  std::cout << keypoints.size() << std::endl;
+
+  cv::Mat descriptors;
+  cv::Ptr<cv::DescriptorExtractor> orb_extractor = cv::ORB::create(
+    nfeatures,
+    scaleFactor,
+    nlevels,
+    edgeThreshold,
+    firstLevel,
+    WTA_K,
+    scoreType,
+    patchSize,
+    fastThreshold);
+  orb_extractor->compute(roi2, keypoints, descriptors);
+
+  std::cout << descriptors.size() << std::endl;
+
+
+
+  cv::drawKeypoints(roi2, keypoints, roi2);
+  cv::imshow("keypoints", roi2);
 
   // close the video source for scoping reasons
   source_.release();
