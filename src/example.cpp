@@ -128,32 +128,25 @@ void ExampleClass::operations()
     std::vector<cv::DMatch> matches, good_matches;
     matcher.match(descriptors_last, descriptors_new, matches);
 
-    // instead of keeping top %, keep the ones above a threshold
-    // sort the matches by hamming distance
+    // sort the matches by hamming distance (not currently needed, but doesn't hurt)
     std::sort(matches.begin(), matches.end());
-
-    std::cout << "-------" << std::endl;
 
     std::vector<cv::KeyPoint> keypoints_keep;
     for (uint32_t i=0; i<matches.size(); i++)
     {
       // queryIdx is the id of the old keypoint
       // trainIdx is the id of the new keypoint
-      std::cout << "---" << std::endl;
-      std::cout << matches[i].distance << std::endl;
-      std::cout << matches[i].queryIdx << std::endl; // index in vector of old keypoints
-      std::cout << matches[i].trainIdx << std::endl; // index in vector of new keypoints
-      if (true) // matches[i].distance<=4000
+      // std::cout << matches[i].distance << std::endl;
+      // std::cout << matches[i].queryIdx << std::endl; // index in vector of old keypoints
+      // std::cout << matches[i].trainIdx << std::endl; // index in vector of new keypoints
+      if (true) // matches[i].distance<=35
       {
+        // keep all matches (normally, put thresholds here)
         keypoints_keep.push_back(keypoints_new[matches[i].trainIdx]);
         good_matches.push_back(matches[i]);
       }
 
     }
-
-    std::cout << matches.size() << std::endl;
-    std::cout << good_matches.size() << std::endl;
-
 
     double x = 0;
     double y = 0;
