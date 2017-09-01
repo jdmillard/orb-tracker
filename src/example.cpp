@@ -8,11 +8,14 @@ ExampleClass::ExampleClass()
   cv::namedWindow("frame", CV_WINDOW_AUTOSIZE);
   cv::moveWindow("frame", 50, 50);
 
-  cv::namedWindow("original keypoints", CV_WINDOW_AUTOSIZE);
-  cv::moveWindow("original keypoints", 50, 500);
+  cv::namedWindow("last keypoints", CV_WINDOW_AUTOSIZE);
+  cv::moveWindow("last keypoints", 50, 500);
 
   cv::namedWindow("search window", CV_WINDOW_AUTOSIZE);
-  cv::moveWindow("search window", 300 , 500);
+  cv::moveWindow("search window", 500 , 500);
+
+  cv::namedWindow("matches", CV_WINDOW_AUTOSIZE);
+  cv::moveWindow("matches", 50 , 700);
 
   // open video here
   video_path_ = "../videos/sample.mp4";
@@ -36,14 +39,14 @@ ExampleClass::ExampleClass()
   window_ = cv::Rect(col, row, w, h);
 
   sss_ = 31; // <<<<<<<<<<<<<<<<<<<<<<<< PATCH SIZE <<<<<<<<<<<<<<<<<<<<<<<<
-  cv::Rect window_aug = cv::Rect(col-sss_, row-sss_, w+(2*sss_), h+(2*sss_));
-  roi_ = frame_(window_aug).clone();
+  cv::Rect window_search = cv::Rect(col-sss_, row-sss_, w+(2*sss_), h+(2*sss_));
+  roi_ = frame_(window_search).clone();
 
   // draw rectangle
   cv::rectangle(frame_, cv::Point(col,row), cv::Point(col+w, row+h), cv::Scalar(255, 0, 0), 2);
-  cv::imshow("frame", frame_);
+  // cv::imshow("frame", frame_);
 
-  // use roi_ to extract ORB features
+  // ORB feature parameters
   int nfeatures     = 500;                    // max number of features
   float scaleFactor = 1.2;                    // pyramid scaling: 2 is poorer matching, 1 is more computation
   int nlevels       = 8;                      // number of pyramid levels
@@ -64,9 +67,6 @@ ExampleClass::ExampleClass()
     scoreType,
     patchSize,
     fastThreshold);
-  orb_detector_->detect(roi_, keypoints_);
-
-  std::cout << keypoints_.size() << std::endl;
 
   orb_extractor_ = cv::ORB::create(
     nfeatures,
@@ -78,14 +78,9 @@ ExampleClass::ExampleClass()
     scoreType,
     patchSize,
     fastThreshold);
-  orb_extractor_->compute(roi_, keypoints_, descriptors_);
 
-  std::cout << descriptors_.size() << std::endl;
-
-
-
-  cv::drawKeypoints(roi_, keypoints_, roi_);
-  cv::imshow("original keypoints", roi_);
+  orb_detector_->detect(roi_, keypoints_last_);
+  orb_extractor_->compute(roi_, keypoints_last_, descriptors_);
 
   // close the video source for scoping reasons
   source_.release();
@@ -114,46 +109,27 @@ void ExampleClass::operations()
     // generate the search window
     int expand = sss_ + 10;
     cv::Rect window_search = cv::Rect(col-expand, row-expand, w+(2*expand), h+(2*expand));
-    cv::Mat search_window = frame_(window_search).clone();
+    cv::Mat roi_search = frame_(window_search).clone();
 
     // find features in the search window
     std::vector<cv::KeyPoint> keypoints_new;
-    orb_detector_->detect(search_window, keypoints_new);
-
-    // for (uint32_t i=0; i<keypoints_new.size(); i++)
-    // {
-    //   std::cout << "---" << std::endl;
-    //   std::cout << i << std::endl;
-    //   std::cout << keypoints_new[i].class_id << std::endl;
-    //   std::cout << keypoints_new[i].angle << std::endl;
-    //   std::cout << keypoints_new[i].octave << std::endl;
-    //   std::cout << keypoints_new[i].pt << std::endl;
-    //   std::cout << keypoints_new[i].response << std::endl;
-    //   std::cout << keypoints_new[i].size << std::endl;
-    // }
+    orb_detector_->detect(roi_search, keypoints_new);
 
     // generate descriptors
     cv::Mat descriptors_new;
-    orb_extractor_->compute(search_window, keypoints_new, descriptors_new);
-
-    // show the orb features in the search window
-    cv::Mat temp_draw = search_window.clone();
-    cv::drawKeypoints(search_window, keypoints_new, temp_draw);
-    cv::imshow("search window", temp_draw);
+    orb_extractor_->compute(roi_search, keypoints_new, descriptors_new);
 
     // match the features
     cv::BFMatcher matcher = cv::BFMatcher(cv::NORM_HAMMING, true); // cv::NORM_HAMMING2 for when WTA_K==3 or 4
     std::vector<cv::DMatch> matches;
     matcher.match(descriptors_, descriptors_new, matches);
 
-    std::cout << matches.size() << std::endl;
+    // instead of keeping top %, keep the ones above a threshold
+    // sort the matches by hamming distance
+    std::sort(matches.begin(), matches.end());
 
-    // show the feature pairs
-    cv::Mat out;
-    cv::drawMatches(roi_, keypoints_, search_window, keypoints_new, matches, out);
-    cv::imshow("pairs", out);
 
-    // std::cout << "------------" << std::endl;
+
     float size = matches.size();
     float percent = 0.20; // keep top 20% of best matches
     float des_length = size*percent;
@@ -164,12 +140,12 @@ void ExampleClass::operations()
     std::vector<cv::DMatch> matches2;
 
     // keep top %
-    for (uint32_t i=0; i<des_length; i++)
-      matches2.push_back(matches[i]);
+    // for (uint32_t i=0; i<des_length; i++)
+    //   matches2.push_back(matches[i]);
 
 
     std::vector<cv::KeyPoint> keypoints_keep;
-    for (uint32_t i=0; i<matches2.size(); i++)
+    for (uint32_t i=0; i<matches.size(); i++)
     {
       // std::cout << "---" << std::endl;
       // std::cout << matches2[i].distance << std::endl;
@@ -179,13 +155,15 @@ void ExampleClass::operations()
 
       // queryIdx is the id of the new keypoint
       // trainIdx is the id of the old keypoint
-      keypoints_keep.push_back(keypoints_new[matches2[i].queryIdx]);
+      // std::cout << matches[i].distance << std::endl;
+      if (matches[i].distance<=35)
+      {
+        keypoints_keep.push_back(keypoints_new[matches[i].queryIdx]);
+        matches2.push_back(matches[i]);
+      }
+
     }
 
-    // show the kept orb features in the search window
-    cv::Mat temp_draw2 = search_window.clone();
-    cv::drawKeypoints(search_window, keypoints_keep, temp_draw2);
-    cv::imshow("kept", temp_draw2);
 
     double x = 0;
     double y = 0;
@@ -207,34 +185,35 @@ void ExampleClass::operations()
     x = x + col - expand;
     y = y + row - expand;
 
-
-    // refresh descriptors of the matched ones
-
-    // "converge" on the set of descriptors based on movement
-    // use the fact that there is movement to come up with the
-    // set of keypoints that are consistently on the target, but regenerate
-    // the descriptors for them when necessary. artifact tracks won't have
-    // time to converge - hopefully
-
-
-
-
-
     // update window_ based on matched feature results
     col = x;
     row = y;
     window_ = cv::Rect(col, row, w, h);
 
-    // update roi display
-    // roi_ = frame_(window_).clone();
-    // cv::imshow("roi", roi_);
 
-    // draw rectangle
-    cv::rectangle(frame_, window_, cv::Scalar(255, 0, 0), 2);
-    cv::imshow("frame", frame_);
 
-    // NOTE: this operates on the entire window, use the current estimate
-    // to select a subwindow, decreasing the amount of backprop required?
+    // all plotting
+    cv::Mat frame = frame_.clone();
+    cv::rectangle(frame, window_, cv::Scalar(255, 0, 0), 2);
+    cv::imshow("frame", frame);
+
+    // draw the last saved keypoints on their image
+    cv::drawKeypoints(roi_, keypoints_last_, roi_);
+    cv::imshow("last keypoints", roi_);
+
+    // draw the newly found keypoints on their image
+    cv::drawKeypoints(roi_search, keypoints_keep, roi_search);
+    cv::imshow("search window", roi_search);
+
+    // show the matches
+    cv::Mat out;
+    cv::drawMatches(roi_, keypoints_last_, roi_search, keypoints_new, matches2, out);
+    cv::imshow("matches", out);
+
+    // update the things for the next iteration
+    // keep the keypoints
+    // what to do about descriptors? always generate the before and afters in loop?
+    // transform keypoint locations?
 
     // plot the results of this iteration and wait for keypress
     auto key = cv::waitKey();

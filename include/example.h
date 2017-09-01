@@ -29,7 +29,7 @@ private:
   cv::Ptr<cv::FeatureDetector> orb_detector_;
   cv::Ptr<cv::DescriptorExtractor> orb_extractor_;
 
-  std::vector<cv::KeyPoint> keypoints_;
+  std::vector<cv::KeyPoint> keypoints_last_;
   cv::Mat descriptors_;
 
 };
