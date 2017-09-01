@@ -22,7 +22,6 @@ private:
   cv::Mat roi_;
   cv::Rect window_;
 
-  cv::TermCriteria criteria_;
   uint32_t col, row, w, h;
   int sss_;
 
@@ -30,6 +29,5 @@ private:
   cv::Ptr<cv::DescriptorExtractor> orb_extractor_;
 
   std::vector<cv::KeyPoint> keypoints_last_;
-  cv::Mat descriptors_;
 
 };

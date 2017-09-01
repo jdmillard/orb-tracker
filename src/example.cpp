@@ -20,6 +20,7 @@ ExampleClass::ExampleClass()
   // open video here
   video_path_ = "../videos/sample.mp4";
   cv::VideoCapture source_(video_path_);
+  source_.set(CV_CAP_PROP_POS_FRAMES, 1);
 
   if (!source_.isOpened())
     std::cout << "invalid video file path" << std::endl;
@@ -39,7 +40,10 @@ ExampleClass::ExampleClass()
   window_ = cv::Rect(col, row, w, h);
 
   sss_ = 31; // <<<<<<<<<<<<<<<<<<<<<<<< PATCH SIZE <<<<<<<<<<<<<<<<<<<<<<<<
-  cv::Rect window_search = cv::Rect(col-sss_, row-sss_, w+(2*sss_), h+(2*sss_));
+
+  // generate the search window
+  int expand = sss_ + 10;
+  cv::Rect window_search = cv::Rect(col-expand, row-expand, w+(2*expand), h+(2*expand));
   roi_ = frame_(window_search).clone();
 
   // draw rectangle
@@ -80,7 +84,6 @@ ExampleClass::ExampleClass()
     fastThreshold);
 
   orb_detector_->detect(roi_, keypoints_last_);
-  orb_extractor_->compute(roi_, keypoints_last_, descriptors_);
 
   // close the video source for scoping reasons
   source_.release();
@@ -95,7 +98,7 @@ void ExampleClass::operations()
 
   // reopen the video source and resume at frame 2
   source_.open(video_path_);
-  source_.set(CV_CAP_PROP_POS_FRAMES, 1);
+  source_.set(CV_CAP_PROP_POS_FRAMES, 2);
   if (!source_.isOpened())
     std::cout << "invalid video file path" << std::endl;
 
@@ -116,53 +119,40 @@ void ExampleClass::operations()
     orb_detector_->detect(roi_search, keypoints_new);
 
     // generate descriptors
-    cv::Mat descriptors_new;
+    cv::Mat descriptors_last, descriptors_new;
+    orb_extractor_->compute(roi_, keypoints_last_, descriptors_last);
     orb_extractor_->compute(roi_search, keypoints_new, descriptors_new);
 
     // match the features
     cv::BFMatcher matcher = cv::BFMatcher(cv::NORM_HAMMING, true); // cv::NORM_HAMMING2 for when WTA_K==3 or 4
-    std::vector<cv::DMatch> matches;
-    matcher.match(descriptors_, descriptors_new, matches);
+    std::vector<cv::DMatch> matches, good_matches;
+    matcher.match(descriptors_last, descriptors_new, matches);
 
     // instead of keeping top %, keep the ones above a threshold
     // sort the matches by hamming distance
     std::sort(matches.begin(), matches.end());
 
-
-
-    float size = matches.size();
-    float percent = 0.20; // keep top 20% of best matches
-    float des_length = size*percent;
-
-    // sort the matches by distance
-    std::sort(matches.begin(), matches.end());
-
-    std::vector<cv::DMatch> matches2;
-
-    // keep top %
-    // for (uint32_t i=0; i<des_length; i++)
-    //   matches2.push_back(matches[i]);
-
+    std::cout << "-------" << std::endl;
 
     std::vector<cv::KeyPoint> keypoints_keep;
     for (uint32_t i=0; i<matches.size(); i++)
     {
-      // std::cout << "---" << std::endl;
-      // std::cout << matches2[i].distance << std::endl;
-      // std::cout << matches2[i].imgIdx << std::endl; // always zero
-      // std::cout << matches2[i].queryIdx << std::endl;
-      // std::cout << matches2[i].trainIdx << std::endl;
-
-      // queryIdx is the id of the new keypoint
-      // trainIdx is the id of the old keypoint
-      // std::cout << matches[i].distance << std::endl;
-      if (matches[i].distance<=35)
+      // queryIdx is the id of the old keypoint
+      // trainIdx is the id of the new keypoint
+      std::cout << "---" << std::endl;
+      std::cout << matches[i].distance << std::endl;
+      std::cout << matches[i].queryIdx << std::endl; // index in vector of old keypoints
+      std::cout << matches[i].trainIdx << std::endl; // index in vector of new keypoints
+      if (true) // matches[i].distance<=4000
       {
-        keypoints_keep.push_back(keypoints_new[matches[i].queryIdx]);
-        matches2.push_back(matches[i]);
+        keypoints_keep.push_back(keypoints_new[matches[i].trainIdx]);
+        good_matches.push_back(matches[i]);
       }
 
     }
+
+    std::cout << matches.size() << std::endl;
+    std::cout << good_matches.size() << std::endl;
 
 
     double x = 0;
@@ -198,22 +188,21 @@ void ExampleClass::operations()
     cv::imshow("frame", frame);
 
     // draw the last saved keypoints on their image
-    cv::drawKeypoints(roi_, keypoints_last_, roi_);
-    cv::imshow("last keypoints", roi_);
+    cv::Mat roi = roi_.clone();
+    cv::drawKeypoints(roi, keypoints_last_, roi);
+    cv::imshow("last keypoints", roi);
 
     // draw the newly found keypoints on their image
-    cv::drawKeypoints(roi_search, keypoints_keep, roi_search);
-    cv::imshow("search window", roi_search);
+    cv::Mat roi_search_draw = roi_search.clone();
+    cv::drawKeypoints(roi_search_draw, keypoints_keep, roi_search_draw);
+    cv::imshow("search window", roi_search_draw);
 
     // show the matches
-    cv::Mat out;
-    cv::drawMatches(roi_, keypoints_last_, roi_search, keypoints_new, matches2, out);
-    cv::imshow("matches", out);
-
-    // update the things for the next iteration
-    // keep the keypoints
-    // what to do about descriptors? always generate the before and afters in loop?
-    // transform keypoint locations?
+    cv::Mat matches_draw;
+    cv::drawMatches(roi_, keypoints_last_, roi_search, keypoints_new, matches, matches_draw);
+    cv::imshow("matches", matches_draw);
+    roi_ = roi_search.clone();
+    keypoints_last_ = keypoints_keep;
 
     // plot the results of this iteration and wait for keypress
     auto key = cv::waitKey();
@@ -221,3 +210,8 @@ void ExampleClass::operations()
       return;
   }
 }
+
+
+// need to consider when associations are way off from the rest
+// so after convergence, there needs to be a check for results that are outside
+// the cluster of the rest
